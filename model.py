@@ -142,23 +142,24 @@ class ConvR(torch.nn.Module):
     def __init__(self, args, num_entities, num_relations):
         super(ConvR, self).__init__()
         self.embedding_dim = 100
+        self.filter_size = 5
+        self.hidden_size = 6
+        self.emb_dim1 = 10
+        self.emb_dim2 = self.embedding_dim  // self.emb_dim1
         self.relation_dim = args.relation_dim
+
         self.emb_e = torch.nn.Embedding(num_entities, self.embedding_dim , padding_idx=0)
         self.emb_rel = torch.nn.Embedding(num_relations, self.relation_dim, padding_idx=0)
         self.inp_drop = torch.nn.Dropout(args.input_drop)
         self.hidden_drop = torch.nn.Dropout(args.hidden_drop)
         self.feature_map_drop = torch.nn.Dropout2d(args.feat_drop)
         self.loss = torch.nn.BCELoss()
-        self.emb_dim1 = 10
-        self.emb_dim2 = self.embedding_dim  // self.emb_dim1
 
-        #self.conv1 = torch.nn.Conv2d(1, 32, (3, 3), 1, 0, bias=args.use_bias)
         self.bn0 = torch.nn.BatchNorm2d(1)
         self.bn1 = torch.nn.BatchNorm2d(self.embedding_dim)
-        self.bn_rel = torch.nn.BatchNorm1d(self.embedding_dim * 5 * 5)
+        self.bn_rel = torch.nn.BatchNorm1d(self.embedding_dim * self.filter_size * self.filter_size)
         self.bn2 = torch.nn.BatchNorm1d(self.embedding_dim)
         self.register_parameter('b', Parameter(torch.zeros(num_entities)))
-        #self.fc = torch.nn.Linear(args.hidden_size,args.embedding_dim)
         self.fc = torch.nn.Linear(self.embedding_dim * 6 * 6, self.embedding_dim)
         print(num_entities, num_relations)
 
@@ -179,21 +180,12 @@ class ConvR(torch.nn.Module):
         rel_embedded = self.inp_drop(rel_embedded)
 
 
-        filters = rel_embedded.view(-1,self.embedding_dim, 1, 5, 5)
+        filters = rel_embedded.view(-1,self.embedding_dim, 1, self.filter_size, self.filter_size)
 
-
-        x=torch.zeros([e1.shape[0],self.embedding_dim, 6, 6]).cuda() # torch.Size([128, 100, 6, 6])
-
+        x=torch.zeros([e1.shape[0],self.embedding_dim, self.hidden_size, self.hidden_size]).cuda()
         for i in range(e1.shape[0]):
-            xi = F.conv2d(e1[i].unsqueeze(0), filters[i], stride=1, padding=0)
-            x[i]=xi# batch_size,100,6,6
+            x[i] = F.conv2d(e1[i].unsqueeze(0), filters[i], stride=1, padding=0)
 
-
-        #stacked_inputs = torch.cat([e1_embedded, rel_embedded], 2)
-
-        #stacked_inputs = self.bn0(stacked_inputs)
-        #x= self.inp_drop(stacked_inputs)
-        #x= self.conv1(x)
         x= self.bn1(x)
         x= F.relu(x)
         x = self.feature_map_drop(x)
@@ -206,7 +198,6 @@ class ConvR(torch.nn.Module):
         x = torch.mm(x, self.emb_e.weight.transpose(1,0))
         x += self.b.expand_as(x)
         pred = torch.sigmoid(x)
-
         return pred
 
 # Add your own model here
@@ -263,6 +254,8 @@ class ConvTransE(torch.nn.Module):
         pred = F.sigmoid(x)
 
         return pred
+        
+#TODO: Code Conv-TransR
 
 # Add your own model here
 
